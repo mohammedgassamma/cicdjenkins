@@ -12,6 +12,12 @@ pipeline {
         IMAGE_NAME = "jenkinscicdspringlab:${BUILD_VERSION}"
     }
 
+    stage('Build') {
+    steps {
+        sh 'chmod +x gradlew'
+        sh './gradlew build'
+    }
+}
     stages {
 
         stage('Checkout') {
@@ -76,9 +82,26 @@ pipeline {
     post {
         success {
             echo "✅ Build ${env.BUILD_NUMBER} succeeded!"
+            emailext(
+                subject: "✔️ SUCCESS: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """<p>Le build a réussi !</p>
+                         <p><b>Job :</b> ${env.JOB_NAME}</p>
+                         <p><b>Build :</b> #${env.BUILD_NUMBER}</p>
+                         <p><b>Branch :</b> ${params.BRANCH}</p>
+                         <p><b>Image Docker :</b> ${IMAGE_NAME}</p>""",
+                to: "momog9997@gmail.com"
+            )
         }
         failure {
             echo "❌ Build ${env.BUILD_NUMBER} failed!"
+            emailext(
+                subject: "❌ FAILURE: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """<p>Le build a échoué ❗</p>
+                         <p><b>Job :</b> ${env.JOB_NAME}</p>
+                         <p><b>Build :</b> #${env.BUILD_NUMBER}</p>
+                         <p><b>Branch :</b> ${params.BRANCH}</p>""",
+                to: "momog9997@gmail.com"
+            )
         }
     }
 }
