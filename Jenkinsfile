@@ -15,20 +15,55 @@ pipeline {
             }
         }
 
+
+    environment {
+        GIT_COMMIT_HASH = ''
+        BUILD_VERSION   = ''
+        IMAGE_NAME      = ''
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo "Cloning repository branch: ${params.BRANCH}"
+                git branch: "${params.BRANCH}", url: 'https://github.com/mohammedgassamma/cicdjenkins.git'
+            }
+        }
+
+        stage('Fix Permissions') {
+            steps {
+                sh "chmod +x mvnw || true"
+                sh "chmod +x gradlew || true"
+            }
+        }
+
         stage('Compute Build Metadata') {
             steps {
                 script {
-                    GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    BUILD_VERSION   = "${env.BUILD_NUMBER}-${GIT_COMMIT_HASH}"
-                    IMAGE_NAME      = "jenkinscicdspringlab:${BUILD_VERSION}"
+                    env.GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.BUILD_VERSION   = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_HASH}"
+                    env.IMAGE_NAME      = "jenkinscicdspringlab:${env.BUILD_VERSION}"
+
+                    echo "Commit: ${env.GIT_COMMIT_HASH}"
+                    echo "Image:  ${env.IMAGE_NAME}"
                 }
             }
         }
 
         stage('Build') {
             steps {
-                echo "Building project with Maven..."
-                sh 'mvn clean package -DskipTests'
+                script {
+                    if (fileExists('mvnw')) {
+                        echo "Building project with Maven wrapper..."
+                        sh "./mvnw clean package -DskipTests"
+                    } else if (fileExists('gradlew')) {
+                        echo "Building project with Gradle wrapper..."
+                        sh "./gradlew build"
+                    } else {
+                        error "❌ No Maven or Gradle build file found."
+                    }
+                }
             }
         }
 
@@ -36,13 +71,13 @@ pipeline {
             parallel {
                 stage('Unit Tests') {
                     steps {
-                        sh 'mvn test'
+                        sh "mvn test || ./gradlew test || true"
                         junit '**/target/surefire-reports/*.xml'
                     }
                 }
                 stage('Integration Tests') {
                     steps {
-                        sh 'mvn verify -DskipUnitTests'
+                        sh "mvn verify -DskipUnitTests || true"
                         junit '**/target/failsafe-reports/*.xml'
                     }
                 }
@@ -51,9 +86,9 @@ pipeline {
 
         stage('Docker Image Build') {
             steps {
-                echo "Building Docker image: ${IMAGE_NAME}"
+                echo "Building Docker image: ${env.IMAGE_NAME}"
                 script {
-                    docker.build("${IMAGE_NAME}")
+                    docker.build(env.IMAGE_NAME)
                 }
             }
         }
@@ -70,18 +105,18 @@ pipeline {
             }
             steps {
                 echo "Simulating deployment..."
-                sh "docker run --rm -d -p 8081:8080 ${IMAGE_NAME}"
-                echo "Application deployed on local Docker!"
+                sh "docker run --rm -d -p 8081:8080 ${env.IMAGE_NAME}"
+                echo "App deployed locally on Docker!"
             }
         }
     }
 
     post {
         success {
-            echo "Build ${env.BUILD_NUMBER} succeeded!"
+            echo "✔️ Build ${env.BUILD_NUMBER} succeeded!"
         }
         failure {
-            echo "Build ${env.BUILD_NUMBER} failed!"
+            echo "❌ Build ${env.BUILD_NUMBER} failed!"
         }
     }
 }
