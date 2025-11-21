@@ -6,18 +6,6 @@ pipeline {
         choice(name: 'DEPLOY_ENV', choices: ['staging', 'production'], description: 'Deployment environment')
     }
 
-    environment {
-        GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-        BUILD_VERSION = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_HASH}"
-        IMAGE_NAME = "jenkinscicdspringlab:${BUILD_VERSION}"
-    }
-
-    stage('Build') {
-    steps {
-        sh 'chmod +x gradlew'
-        sh './gradlew build'
-    }
-}
     stages {
 
         stage('Checkout') {
@@ -27,9 +15,19 @@ pipeline {
             }
         }
 
+        stage('Compute Build Metadata') {
+            steps {
+                script {
+                    GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    BUILD_VERSION   = "${env.BUILD_NUMBER}-${GIT_COMMIT_HASH}"
+                    IMAGE_NAME      = "jenkinscicdspringlab:${BUILD_VERSION}"
+                }
+            }
+        }
+
         stage('Build') {
             steps {
-                echo "Building the project with Maven..."
+                echo "Building project with Maven..."
                 sh 'mvn clean package -DskipTests'
             }
         }
@@ -62,7 +60,6 @@ pipeline {
 
         stage('Archive Artifacts') {
             steps {
-                echo "Archiving artifacts..."
                 archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
             }
         }
@@ -74,34 +71,17 @@ pipeline {
             steps {
                 echo "Simulating deployment..."
                 sh "docker run --rm -d -p 8081:8080 ${IMAGE_NAME}"
-                echo "Application deployed successfully on local Docker network."
+                echo "Application deployed on local Docker!"
             }
         }
     }
 
     post {
         success {
-            echo "✅ Build ${env.BUILD_NUMBER} succeeded!"
-            emailext(
-                subject: "✔️ SUCCESS: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """<p>Le build a réussi !</p>
-                         <p><b>Job :</b> ${env.JOB_NAME}</p>
-                         <p><b>Build :</b> #${env.BUILD_NUMBER}</p>
-                         <p><b>Branch :</b> ${params.BRANCH}</p>
-                         <p><b>Image Docker :</b> ${IMAGE_NAME}</p>""",
-                to: "momog9997@gmail.com"
-            )
+            echo "Build ${env.BUILD_NUMBER} succeeded!"
         }
         failure {
-            echo "❌ Build ${env.BUILD_NUMBER} failed!"
-            emailext(
-                subject: "❌ FAILURE: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """<p>Le build a échoué ❗</p>
-                         <p><b>Job :</b> ${env.JOB_NAME}</p>
-                         <p><b>Build :</b> #${env.BUILD_NUMBER}</p>
-                         <p><b>Branch :</b> ${params.BRANCH}</p>""",
-                to: "momog9997@gmail.com"
-            )
+            echo "Build ${env.BUILD_NUMBER} failed!"
         }
     }
 }
